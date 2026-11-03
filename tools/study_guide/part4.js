@@ -1,0 +1,153 @@
+const { H1, H2, H3, P, B, N, EQ, NOTE, WARN, SAY, DONT, SP, T } = require("./lib");
+
+module.exports = [
+H1("Part 5. Metrics: how to judge whether one method is better"),
+P("You asked what the fundamental metrics should be. The principle is: **judge a stopping rule by the thing it is supposed to achieve**, which is the best net value, and then add metrics that explain *how* it achieves it, *what it costs*, and *whether it holds up* in new conditions. Slide 16 shows the six groups; this part defines each one precisely."),
+
+H2("5.1 Net value as a percentage of the best stop (the main score)"),
+EQ("score = Σ over maps of V(T_rule)  ÷  Σ over maps of V(T*)  × 100%"),
+P("For each test map, V(T_rule) is the net value when the rule stops and V(T*) the net value at the best stop in hindsight. The score is the **ratio of the totals** over all maps in a setting, not the average of per-map percentages. Reason: on some maps V(T*) is close to 0, and a per-map percentage with a tiny denominator explodes."),
+P("**Example.** Three maps with best values 500, 300 and 10; a rule gets 450, 270 and −5. Ratio of totals: (450 + 270 − 5) ÷ 810 = 88%. Mean of per-map percentages: (90% + 90% − 50%) ÷ 3 = 43%. The one near-worthless map would dominate the second number."),
+P("**Properties.** 100% means as good as perfect hindsight. 0% means as good as not exploring at all. Below 0% means worse than not exploring: the rule spent more than it found."),
+WARN([
+  "Even the ratio of totals becomes unstable when the whole setting has a tiny best value. In the setting 8 robots / 32×32 / high communication the oracle's average is only about 27 cells, so a rule that loses 200 cells scores −732%. That is why the percentage is used **within** a setting, and regret (next) is used to compare **across** settings.",
+], "The pitfall that broke the old slide 9"),
+
+H2("5.2 Regret"),
+EQ("regret = V(T*) − V(T_rule)      (cells)"),
+EQ("normalised regret = regret ÷ cells revealed by full exploration of that map   (% of map)"),
+P("Regret is the value lost by not stopping at the best moment. It is never negative (the oracle is the best possible). Normalising by the size of the map (all cells the full exploration reveals) makes it comparable across 32×32 and 64×64 maps and keeps it meaningful when the best achievable value is small, because the denominator is the map size, not the (possibly tiny) best value. **This is the metric used to compare across the 36 settings (slides 21–22).**"),
+
+H2("5.3 Stop-time error"),
+EQ("stop-time error = T_rule − T*   (cycles; negative = too early, positive = too late)"),
+P("Reported as the mean error, the mean absolute error, and the share of maps where the rule stopped early, exactly on time, or late. It is diagnostic: it tells you *how* a rule fails. Exploring to the end is late on 97% of maps; the myopic rule is early on 76%; the learned rule errs on the early side (51% early, 29% exact, 19% late)."),
+
+H2("5.4 Per-map success and tail"),
+B("**Share of maps with ≥ 90% of the best value**: how often the rule gets it nearly right."),
+B("**Median per-map score**: the typical map."),
+B("**10th percentile of per-map scores** (\"worst 10% of maps\"): how bad the bad cases are. Users care about bad cases."),
+
+H2("5.5 Operational cost (what the stop saves, what it leaves)"),
+B("**Coverage at stop**: known free cells ÷ reachable free cells. Not the goal, but it must be reported so that nobody can say the method \"wins\" by leaving half the building unmapped. RQ3 says *without losing meaningful coverage*; this metric answers it."),
+B("**Cycles to stop** (mission time), **robot steps** (distance, energy), **messages** (= cycles × N(N−1)): the resources the stop saves."),
+P("These are the standard metrics of the exploration literature (exploration time, travel distance, communication volume; see for example Tan et al. 2023 and Juliá et al. 2012), so reporting them makes the results comparable with other papers."),
+
+H2("5.6 Quality of the value estimate"),
+B("**Pearson correlation** between the estimated Q at each decision point and the true value of continuing computed in hindsight."),
+B("**Sign accuracy**: share of decision points where Q > 0 exactly when the true value of continuing is > 0. This is what the decision actually depends on."),
+B("**Mean absolute error** (optional): average size of the estimation error, in cells."),
+P("These answer RQ2 (\"can the policy tell when further exploration has low marginal value?\") directly, independently of how well the stop scores."),
+
+H2("5.7 Robustness across settings (generalisation)"),
+B("**Per-setting scores** for every one of the 36 settings (Part 10 lists them all). Always report all of them."),
+B("**Interquartile mean (IQM)** of the per-setting scores: the mean of the middle 50%, robust to a few extreme settings (Agarwal et al. 2021)."),
+B("**Worst case**: the worst setting's score or regret. A method deployed in unknown conditions is judged by its worst case."),
+B("**Counts above and below thresholds**: settings with ≥ 80% of the best value, settings with < 50%. This is a simple form of the *performance profile* in Agarwal et al. (2021)."),
+B("**Probability of improvement**: share of settings in which method A beats method B."),
+
+H2("5.8 Metrics for the MARL phase (Level 2, RQ1)"),
+P("When Level 2 is learned, allocation quality must be measured separately from stopping (stopping held fixed): time and distance to reach 80%/90%/95% coverage, total travel, **redundancy** (cells sensed by more than one robot, or robots crossing each other's areas), load balance (spread of distance across robots), and messages. Then the full system is measured with the stopping metrics above."),
+
+H2("5.9 Learning and computational metrics"),
+B("**Sample efficiency**: how many training maps (or environment steps) are needed to reach a given score."),
+B("**Variance across training seeds**: train with at least 5 random seeds and report mean ± interval (Henderson et al. 2018 show single-seed RL results are unreliable). The prototype currently uses one seed; this is listed as a limitation."),
+B("**Training time and decision time**: the stop must be cheap enough to run every cycle on a robot."),
+
+H2("5.10 How to decide that one method is better: a checklist"),
+T([
+  ["Requirement", "How it is met in this project"],
+  ["Same data, same conditions", "All rules evaluated on the same logged runs (paired); tuned rules tuned on the same 300 training maps"],
+  ["Baselines at their best", "Thresholds tuned for the training setting; plus the optimistic per-setting re-tuned controls"],
+  ["Held-out test data", "Test maps never used for training or tuning"],
+  ["Uncertainty reported", "95% bootstrap intervals; paired differences; ≥ 5 seeds planned"],
+  ["All settings reported", "Full 36-setting table in the appendix, including the failures"],
+  ["Metrics fixed in advance", "The metric list on slide 16 is fixed before the MARL experiments start"],
+  ["Where does the gain come from?", "Ablation table (slide 26): swap one component at a time"],
+], [0.35, 0.65]),
+P("A reasonable decision rule for the paper: method A is better than B if the paired 95% interval of the difference in the main score excludes 0 in the relevant settings, A is not worse on worst-case regret, and the difference holds across training seeds. By that rule, in the training setting today the learned rule is **not** better than the tuned coverage threshold (it is a tie); across unseen settings it is **safer** (worst-case regret 9.9% vs 25.3%)."),
+
+// ------------------------------------------------------------------ PART 6
+H1("Part 6. Every result, and what it does and does not prove"),
+
+H2("6.1 The motivating example (slide 5)"),
+P("Map 50018, 3 robots, 40×40 map, medium communication. The learned rule stopped at **cycle 20** with **83%** of the free space mapped and a net value of **554** cells. Exploring until no frontiers remained took **37** cycles, reached 100%, and ended with a net value of **319**. On this map the learned stop coincides with the best stop in hindsight. **The last 17 cycles added 17% more map and destroyed 42% of the value** (554 → 319)."),
+P("This map was chosen as a clear illustration, not as a typical result. Say so if asked: the typical results are on slides 18–23."),
+
+H2("6.2 Training setting: 140 unseen maps (slides 18–19)"),
+T([
+  ["Rule", "Score [95% CI]", "Median map", "Worst 10%", "≥ 90% maps", "Coverage", "Cycles", "Steps", "Early / exact / late"],
+  ["Explore until no frontiers", "74% [71–77]", "76%", "51%", "17%", "100%", "27.8", "300", "0 / 3 / 97%"],
+  ["Fixed budget (19)", "91% [89–92]", "92%", "78%", "56%", "88%", "18.9", "214", "36 / 18 / 46%"],
+  ["Coverage threshold (0.84)", "92% [91–94]", "94%", "82%", "71%", "90%", "19.5", "219", "47 / 15 / 38%"],
+  ["Myopic rule", "68% [63–73]", "74%", "22%", "35%", "56%", "10.3", "115", "76 / 0 / 24%"],
+  ["Gain-vs-cost (α 1.6)", "89% [86–91]", "92%", "77%", "59%", "89%", "19.8", "222", "19 / 19 / 61%"],
+  ["**Learned value-aware stop**", "**91% [89–93]**", "96%", "72%", "69%", "78%", "15.1", "170", "51 / 29 / 19%"],
+  ["Best in hindsight", "100%", "100%", "100%", "100%", "90%", "18.3", "207", "—"],
+], [0.2, 0.12, 0.08, 0.08, 0.09, 0.09, 0.07, 0.07, 0.2], { hl: [6] }),
+SP(),
+P("**How to read each row:**"),
+B("**Explore until no frontiers (74%)**: maps everything but is late on 97% of maps, by about 9 cycles on average. The final third of its cycles cost more than they reveal. This is the classical approach, and it loses about a quarter of the achievable value."),
+B("**Fixed budget, coverage threshold, gain-vs-cost (89–92%)**: good here because their one number was tuned for exactly this setting. The coverage threshold is the strongest baseline."),
+B("**Myopic rule (68%)**: stops after the first losing cycle. Cycle values are noisy (a corridor cycle reveals little, the room behind it a lot), so it quits too early on 76% of maps and its worst 10% of maps score only 22%."),
+B("**Learned rule (91%)**: statistically tied with the coverage threshold. The paired 95% interval of the difference (learned − coverage) is **[−3.3, +1.6] points**, which contains 0. On individual maps, learned is better on 46%, worse on 41%, equal on 13%."),
+P("**Why does the learned rule cover less (78% vs 90%) but score about the same?** It stops earlier on maps where the remaining space is expensive to reach (far away, behind narrow doors), where continuing loses value anyway. On average it stops 3.2 cycles before the best stop, so it does err early; its typical map is excellent (median 96%) but its bad maps are worse than the coverage rule's (worst 10%: 72% vs 82%)."),
+NOTE([
+  "The 140 maps are the original 100-map test set plus 40 maps of the same setting from the generalisation grid. On the 100-map set alone: learned 93% [91–95], coverage 92% [90–94]. On the 40-map set alone: learned 87% [83–92], coverage 93% [90–95]. Pooling both gives the most reliable estimate, which is the one in the deck. Mention the 40-map result if asked about stability; it shows why a single number without an interval is not enough.",
+], "Why 140 maps, and why the old deck said 93%"),
+
+H2("6.3 Does it know the value that is left? (slide 20)"),
+P("At every decision point of the 140 test maps (3,886 points), compare the policy's estimate Q with the true value of continuing, computed afterwards as the best achievable sum of the remaining cycle values (it can be negative if every continuation loses value)."),
+B("**Pearson r = 0.88**: the estimate moves closely with the truth."),
+B("**Sign accuracy 89%**: at 89% of decision points the estimate says \"continue\" exactly when continuing was truly worth it."),
+B("The scatter plot shows the estimate **flattens for large true values**: when a lot of map is left (early in an episode), Q underestimates. Tree ensembles average training targets inside each leaf and cannot extrapolate beyond them. This does not hurt the decision early on (Q is clearly positive either way); what matters is accuracy **near zero**, where the stop happens."),
+P("The old deck said r = 0.87; that was on the 100-map set. On the pooled 140 maps it is 0.88."),
+
+H2("6.4 Generalisation without retraining: 36 settings (slides 21–22)"),
+P("The trained policy and the tuned thresholds are applied unchanged to every combination of 2/4/6/8 robots, 32/48/64 cell maps and low/medium/high communication cost, with 40 new maps per combination."),
+T([
+  ["Rule", "Mean regret (% map)", "Worst regret", "IQM of scores", "≥ 80% settings", "< 50% settings", "Worst score", "Raw mean score", "Median score"],
+  ["Explore until no frontiers", "11.4", "44.6", "69%", "5", "9", "−1411%", "−13%", "72%"],
+  ["Fixed budget (19)", "9.1", "37.1", "72%", "13", "8", "−1146%", "28%", "70%"],
+  ["Coverage threshold (0.84)", "4.7", "25.3", "89%", "27", "5", "−732%", "46%", "90%"],
+  ["Myopic rule", "11.4", "24.5", "56%", "0", "12", "−12%", "52%", "58%"],
+  ["Gain-vs-cost (α 1.6)", "6.9", "15.8", "79%", "17", "7", "−389%", "44%", "79%"],
+  ["**Learned**", "**3.6**", "**9.9**", "**89%**", "**27**", "**1**", "**−10%**", "83%", "89%"],
+  ["*Control: coverage re-tuned per setting*", "3.1", "9.9", "90%", "30", "3", "−223%", "—", "—"],
+  ["*Control: budget re-tuned per setting*", "3.2", "4.1", "87%", "30", "3", "−20%", "—", "—"],
+], [0.22, 0.1, 0.09, 0.09, 0.1, 0.1, 0.1, 0.1, 0.1], { hl: [6] }),
+SP(),
+P("**What this shows:**"),
+B("**Typical setting: a tie.** IQM 89% vs 89%, the same number of settings above 80% (27 of 36), medians 89% vs 90%. Do not claim the learned rule is better in a typical setting."),
+B("**Worst case: much safer.** Worst regret 9.9% of the map vs 25.3% for the coverage threshold and 15.8–44.6% for the others. Only 1 setting below 50% vs 5–12 for the others. Worst score −10% vs −732%."),
+B("**Probability of improvement** (share of the 36 settings where the learned rule scores higher): 61% vs coverage threshold, 78% vs gain-vs-cost, 92% vs fixed budget, 94% vs explore-all, 100% vs myopic."),
+B("**The re-tuned controls** choose the best threshold separately for each setting *using that setting's own test maps*. That is optimistic (it tunes on test data) and impractical (it needs data from every new deployment), but it shows what a perfectly re-tuned simple rule could do. The learned rule gets close (mean regret 3.6% vs 3.1–3.2%) **without any re-tuning**. The re-tuned budget has a better worst case (4.1%) than the learned rule (9.9%): an honest point to concede."),
+B("**The raw mean score (83% vs ≤ 52%)** is shown only for completeness. It is distorted by the few settings where the best value is tiny and should not be used as the headline."),
+
+H2("6.5 Where it wins and where it fails (slide 23)"),
+T([
+  ["Setting", "Learned", "Coverage 84%", "Gain-vs-cost", "Learned stop error", "Explanation"],
+  ["32×32, 6 robots, high", "84%", "5%", "−16%", "+1.4", "A cycle costs ~74 cells; tuned rules keep going to 84% known at a loss; learned sees gain ÷ cost fall and stops"],
+  ["48×48, 8 robots, high", "58%", "−251%", "−251%", "+2.7", "Even costlier; every tuned rule loses more than it finds"],
+  ["64×64, 6 robots, high", "89%", "59%", "30%", "−3.3", "Large map, costly team"],
+  ["48×48, 2 robots, medium", "76%", "92%", "88%", "−20.0", "Failure: stops ~20 cycles too early"],
+  ["64×64, 2 robots, medium", "73%", "93%", "79%", "−33.2", "Failure: stops ~33 cycles too early"],
+  ["32×32, 8 robots, high", "−10%", "−732%", "−389%", "+2.0", "Exploring is barely worth it (best value ≈27 cells; on 14/40 maps the best choice is not to explore). Every rule fails; learned fails least"],
+], [0.18, 0.08, 0.1, 0.1, 0.1, 0.44]),
+SP(),
+P("**Why the 2-robot, large-map failure happens (honest answer: not yet diagnosed).** The most likely causes, in the order I would test them:"),
+N("**Out-of-range states.** Training episodes on 32×32 maps with 2 robots last about 28 cycles. On a 64×64 map with 2 robots an episode lasts far longer, and combinations of feature values (e.g. little of the map known but frontier density and distances typical of late 32×32 episodes) appear that training never produced. Trees map such inputs to the nearest training leaves, which may be late-episode leaves with Q ≤ 0.", "num5"),
+N("**Q is in cells, not a ratio.** True remaining values on big maps are far larger than any training target, and tree predictions cannot exceed the training range.", "num5"),
+N("**Map-size-dependent features.** \"Map known\" rises much more slowly on a big map, so its meaning changes with map size.", "num5"),
+P("Fixes to try: train on a mix of map sizes (map-size randomisation, like cost randomisation), make the value target scale-free (e.g. value ÷ expected cycle cost), and check feature distributions between training and test. This is written into the risk table (slide 29)."),
+
+H2("6.6 Claims you can and cannot make"),
+T([
+  ["You CAN say", "You CANNOT say"],
+  ["The stop decision can be learned from data as an optimal stopping problem, and the learned value tracks the true remaining value (r = 0.88).", "The learned stop beats the best tuned rule. (It ties.)"],
+  ["In the training setting it ties the best hand-tuned rule (91% vs 92%, intervals overlap).", "It achieves 93%. (Only on one subset of maps.)"],
+  ["Without retraining it matches the tuned rule in typical settings and avoids its catastrophic failures when teams grow or messages get expensive.", "It averages 83% vs 52% across settings. (Distorted by tiny denominators.)"],
+  ["It gets close to a rule re-tuned for every setting, without needing any re-tuning.", "It generalises to any team size and map size. (It fails with 2 robots on large maps.)"],
+  ["This is a proposal with a working prototype of Phases 1–2.", "This is multi-agent RL / deep RL. (Not yet.)"],
+  ["To my knowledge, no prior work learns the team-level decision to end a multi-robot exploration mission as a cost-aware stopping problem.", "Nobody has studied stopping in exploration / nobody has learned a stop. (Both false: see slide 8.)"],
+], [0.5, 0.5]),
+];

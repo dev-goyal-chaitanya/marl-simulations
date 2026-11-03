@@ -1,0 +1,168 @@
+const { H1, H2, H3, P, B, N, EQ, NOTE, WARN, SAY, SP, T } = require("./lib");
+
+module.exports = [
+H1("Part 3. The formulation, step by step"),
+P("This part explains slides 10–13 in full. If you can reproduce the worked examples below on a whiteboard, you understand the formulation."),
+
+H2("3.1 The time line of one episode"),
+P("An episode is one exploration of one map. Time is counted in **cycles**. In one cycle every robot that has a target takes up to **6 steps** (one grid cell per step), sensing after each step. Between cycles the team shares maps, re-plans, and makes the **Level-1 decision**: continue or stop."),
+T([
+  ["Decision point", "What has happened so far", "Decision"],
+  ["t = 0", "Robots placed, first look around, first targets planned; no cycle run yet", "Run cycle 0, or stop now (explore nothing)"],
+  ["t = 1", "Cycle 0 done", "Run cycle 1, or stop"],
+  ["…", "…", "…"],
+  ["t = T", "Cycles 0 … T−1 done", "If the team stops here, it has run T cycles"],
+], [0.18, 0.5, 0.32]),
+SP(),
+P("If nobody stops the team, the episode ends by itself when **no reachable frontier is left** (the map is fully explored as far as the robots can reach). In the training setting this takes about 28 cycles on average."),
+
+H2("3.2 The value of one cycle (slide 11)"),
+EQ("r(t) = ΔI(t) − c_move · d(t) − c_comm · N(N−1) − c_coord"),
+T([
+  ["Term", "Meaning", "Value in the prototype", "Why this form"],
+  ["ΔI(t)", "Cells that became known during cycle t", "Counts every newly seen cell, free or wall", "Information gained, in the simplest unit: map cells"],
+  ["d(t)", "Robot steps actually taken during cycle t (summed over robots)", "0 to 6N; idle robots add 0", "Motion costs time and energy"],
+  ["c_move", "Cost of one robot step, in cells", "2", "An exchange rate: one step is worth two new cells to the operator"],
+  ["N(N−1)", "Map-sharing messages per cycle: each robot sends its update to every other robot", "2 for N = 2, 56 for N = 8", "All-to-all sharing grows roughly with N²"],
+  ["c_comm", "Cost of one message, in cells", "0.05 (low), 0.2 (medium), 0.6 (high)", "Bandwidth, latency, energy for radio"],
+  ["c_coord", "Fixed overhead per cycle", "2", "Re-planning, synchronisation"],
+], [0.12, 0.33, 0.25, 0.3]),
+SP(),
+P("**Worked example 1 (slide 11).** A full cycle with 2 robots at medium communication cost: motion 2 × 12 steps = 24, messages 0.2 × 2 = 0.4, coordination 2, total **26.4**. The cycle must reveal at least 26.4 cells to be worth running. With 8 robots at high cost: 2 × 48 = 96, 0.6 × 56 = 33.6, plus 2, total **131.6**. The same exploration step must now reveal five times more to pay for itself."),
+P("**Worked example 2.** Suppose a cycle with 2 robots reveals 40 cells and both robots walk 6 steps: r = 40 − 24 − 0.4 − 2 = **+13.6**. Late in the episode, one robot has nothing left to do and the other walks 6 steps down a corridor revealing 5 cells: r = 5 − 12 − 0.4 − 2 = **−9.4**. That cycle lost value."),
+P("**Total value of stopping after T cycles** is the sum of the cycle values:"),
+EQ("V(T) = r(0) + r(1) + … + r(T−1),   V(0) = 0"),
+NOTE([
+  "**Why cells as the unit?** It makes every term comparable and easy to explain. The weights are an operator's preference, not physics. That is why the evaluation varies them (three communication levels) and why training randomises them.",
+  "**Why is the message term fixed per cycle?** In the prototype every robot shares its map with every other robot once per cycle, even if it did not move. That is a simplification; limited range and bandwidth come later.",
+  "**Is ΔI including walls a problem?** No for the comparison (all rules are scored with the same reward), and it is reasonable: learning where walls are is part of the map. Coverage (a separate metric) counts only free space.",
+], "Details you may be asked about"),
+
+H2("3.3 The objective: choose the stopping time"),
+P("The team wants to choose T to maximise the **expected** total value E[V(T)], where T must be a stopping time: the decision to stop at t may only use information available at t. It cannot see the future cycle values."),
+P("This is exactly the classical optimal stopping problem, with three twists that make it a research question: (1) the process is **partially observed** (the map is unknown), (2) there are **many agents** whose behaviour and number affect the costs, and (3) the costs depend on **coordination** (messages grow with team size)."),
+
+H2("3.4 The value of continuing, Q, and the stopping rule (slide 12)"),
+P("Define Q(s) = the expected total net value from now on if the team runs **one more cycle** from state s and then keeps deciding optimally. The value of stopping now is 0. So the best value from state s is max(0, Q(s)), and Q satisfies a Bellman equation:"),
+EQ("Q(s) = E[ r(t) + max(0, Q(sₜ₊₁)) | sₜ = s ]"),
+P("Read it as: **the value of continuing = what this cycle earns + the best of (stop, continue) at the next decision point.** The rule that follows is:"),
+EQ("stop at the first t with Q(sₜ) ≤ 0"),
+P("If the map is fully explored after a cycle (no frontiers left), the episode ends and nothing more can be earned, so the value after that cycle is 0."),
+P("**Worked example 3.** Suppose that from the current state the next three cycles would earn +10, −8, +3 and then the episode ends. If the team continues and then decides optimally, the best it can do is: +10, then at the next point compare stop (0) with continuing (−8 + max(0, 3) = −5) → stop. So Q = 10 + max(0, −5) = **10 > 0 → continue now, stop after one cycle.** Note that the myopic rule would also continue here, but it would only stop after seeing the −8 cycle, one cycle too late."),
+P("In reality the future cycle values are uncertain, so Q is an **expectation**, and the prototype estimates it from data (Part 4.7)."),
+
+H2("3.5 The hindsight oracle (best stop in hindsight)"),
+P("After a run has finished, all cycle values are known, so we can compute the best possible stopping point for that map:"),
+EQ("T* = argmax over T = 0 … T_end of V(T)"),
+P("**The oracle is not a policy.** It uses the future. It is the 100% line: no stopping rule can do better than the oracle on the same run, because every stopping rule picks some T and the oracle picks the best one. Every rule is scored as a percentage of the oracle's value (Part 5)."),
+P("The oracle can choose T* = 0 (\"do not explore at all\") when every prefix sum is negative. This happens on 14 of 40 maps in the setting 8 robots / 32×32 / high communication. That is why percentages become unstable there, and why the deck uses regret for comparisons across settings."),
+
+H2("3.6 Why two levels (slide 13)"),
+P("The decisions happen on different time scales. **Where each robot goes** changes every step and depends on local information: it is naturally decentralised (Level 2). **Whether the whole team keeps going** is a team decision taken once per cycle from a team summary (Level 1). Splitting them is the hierarchical part, and it lets each level be learned and evaluated separately (the ablation table on slide 26 uses exactly this)."),
+T([
+  ["", "Week-1 prototype", "Final system"],
+  ["Level 1", "Stop or continue; learned by fitted Q-iteration (one central learner)", "Stop, continue, or continue with fewer robots; learned within the MARL hierarchy"],
+  ["Level 2", "Greedy nearest-frontier allocation (fixed)", "Learned per-robot policy with shared parameters, trained with CTDE (e.g. MAPPO)"],
+  ["Communication", "A cost only", "A cost and a constraint (range, bandwidth)"],
+], [0.16, 0.4, 0.44]),
+SP(),
+WARN([
+  "The final Level 1 has a third action: continue with fewer robots. The prototype's biggest failure (8 robots, small map, costly messages) is exactly the case where that action would help: the right answer there is not \"stop\" or \"continue with 8\", but \"continue with 2\".",
+], "Connect the failure to the plan"),
+
+H1("Part 4. The prototype, exactly as built"),
+P("This part explains slides 14, 15 and 17, and what the code in the prototype folder does. File names are given so you can open the code if asked."),
+
+H2("4.1 Maps (`mapgen.py`)"),
+B("Square grid, walls around the border."),
+B("A random room size between 7 and 10 cells. Straight walls are placed every room-size cells, horizontally and vertically; each wall line is skipped with probability 0.2, so rooms have varied sizes."),
+B("Each wall segment between two crossings gets a 2-cell **door** with probability 0.9."),
+B("**Clutter** (furniture): size²/70 random blocks of 1–3 by 1–3 cells (about 15 blocks on a 32×32 map)."),
+B("Only the **largest connected free region** is kept (the rest becomes wall), so every free cell is reachable and \"coverage\" means coverage of space the team could actually reach."),
+
+H2("4.2 Robots, sensing, frontiers (`env.py`)"),
+B("The team starts clustered around one random free cell (the first N free cells found by breadth-first search from it)."),
+B("Sensor: a disc of radius 4 cells with line of sight (Bresenham rays). A ray stops at the first wall; the wall cell itself becomes known."),
+B("Movement: 4-connected (up, down, left, right), one cell per step, only through **known** free cells. Paths are shortest paths by breadth-first search on the known map."),
+B("Frontier: a known free cell with an unknown 4-neighbour."),
+
+H2("4.3 Level 2: greedy allocation with spreading"),
+N("Compute each robot's shortest-path distance to every frontier.", "num3"),
+N("Repeatedly pick the (robot, frontier) pair with the smallest distance among robots without a target; assign it.", "num3"),
+N("Block every frontier within 8 cells (Chebyshev distance, i.e. in an 8-cell square around it) of the chosen target, so the next robot goes somewhere else.", "num3"),
+N("During the cycle, a robot that reaches its target, or whose target stopped being a frontier, immediately picks the nearest frontier that is not close to a teammate's target (in-cycle re-planning).", "num3"),
+P("A robot with no reachable frontier idles and costs no motion. The episode ends when no robot has a target."),
+
+H2("4.4 What is logged"),
+P("Before each decision point the environment records a team observation, and after each cycle it records the outcome:"),
+T([
+  ["Logged value", "Meaning"],
+  ["known_frac", "Fraction of **all** grid cells (free and wall) that are known"],
+  ["free_coverage", "Known free cells ÷ all reachable free cells (the \"map covered\" metric)"],
+  ["n_frontier", "Number of frontier cells"],
+  ["frac_assigned", "Share of robots that have a target"],
+  ["mean_target_dist", "Mean shortest-path distance from robots to their targets"],
+  ["potential", "Unknown cells inside the 9×9 square around each planned target (union): a rough, optimistic estimate of what the next cycle could reveal"],
+  ["gain, steps (per cycle)", "Cells revealed and robot steps taken during the cycle"],
+], [0.28, 0.72]),
+
+H2("4.5 The seven features of the Level-1 state (slide 14)"),
+P("The stopping policy sees seven numbers at each decision point. All are fractions or ratios, so the same policy can be run with other team sizes, map sizes and costs. \"Expected cycle cost\" means the cost of one cycle if every robot that has a target walks 6 steps: c_move × (frac_assigned × N × 6) + c_comm × N(N−1) + c_coord."),
+T([
+  ["#", "Feature", "Formula", "Why it helps"],
+  ["1", "Map known", "known_frac", "How far along the exploration is"],
+  ["2", "Expected gain ÷ cost", "potential ÷ expected cycle cost", "Is the next cycle likely to pay for itself? Includes the cost weights, so the policy can react to expensive messages"],
+  ["3", "Last gain ÷ cost", "gain of the previous cycle ÷ expected cycle cost", "How well the last cycle paid off"],
+  ["4", "Previous gain ÷ cost", "gain two cycles ago ÷ expected cycle cost", "A trend: is the pay-off falling?"],
+  ["5", "Distance to targets ÷ 6", "mean_target_dist ÷ steps per cycle", "Far targets mean cycles spent driving, not revealing"],
+  ["6", "Share of robots with a target", "frac_assigned", "Idle robots mean the remaining work is small"],
+  ["7", "Frontier density", "n_frontier ÷ map side", "How much frontier is left, scaled by map size"],
+], [0.05, 0.22, 0.33, 0.4]),
+P("At t = 0 there is no history, so features 3 and 4 are set equal to feature 2; at t = 1, feature 4 equals feature 3."),
+NOTE([
+  "Features 2–4 are where cost enters: when communication gets expensive, the expected cycle cost rises and these ratios fall. That is the mechanism that lets the learned rule adapt to new cost settings without retraining, and the reason the cost-blind rules (fixed budget, coverage threshold) cannot.",
+  "Q itself is **not** a ratio: it is in cells. So Q values on a 64×64 map can be far larger than anything seen in training on 32×32 maps. Tree models cannot predict outside the range of their training targets. This is one likely contributor to the failure with 2 robots on large maps (Part 6.5).",
+], "Two points worth understanding"),
+
+H2("4.6 Why one full run per map is enough"),
+P("The stopping decision does not change how robots move **before** the stop. So the prototype explores each map once, to the very end, and logs every cycle. Stopping after t cycles simply means keeping the first t cycle values. Every stopping rule, including the oracle, is evaluated on the same logged runs; only the stopping moment differs. This is valid because each rule's decision at t uses only information logged up to t (no look-ahead), except the oracle, which is allowed to look ahead by definition."),
+P("It is also what makes the comparison **paired**: all rules face exactly the same maps and exactly the same robot behaviour."),
+
+H2("4.7 Training the stop with fitted Q-iteration (`stopping.py`)"),
+N("For every training run and every cycle t, build a transition: state features s_t, reward r(t), next features s_t+1, and a flag *done* = 1 if cycle t was the last one (no frontiers after it).", "num4"),
+N("Start with Q = 0 everywhere.", "num4"),
+N("Compute the target for each transition: y = r(t) + (1 − done) × max(0, Q(s_t+1)).", "num4"),
+N("Fit an extra-trees regressor (80 trees, at least 8 samples per leaf, random seed 0) that predicts y from s_t. This becomes the new Q.", "num4"),
+N("Repeat steps 3–4 for 25 rounds.", "num4"),
+P("After round 1, Q is just the expected next cycle value (a one-step estimate). After round k, it looks up to k cycles ahead. After 25 rounds (close to the typical episode length of about 28 cycles), it approximates the full continuation value."),
+P("**Data size.** 300 training maps × about 28 cycles × 4 cost settings ≈ 33,000 transitions."),
+
+H2("4.8 Cost randomisation"),
+P("Each of the 300 training runs is re-scored under 4 random cost settings drawn independently: c_move uniform in [1, 3], c_comm uniform in [0.05, 0.6], c_coord uniform in [1, 40]. That makes 1,200 scored runs, from only 300 simulations, because costs do not affect how robots move. The team size (2 robots) and map size (32×32) are **not** randomised: generalisation to other team and map sizes comes only from the ratio features."),
+
+H2("4.9 Baselines exactly (slide 15)"),
+T([
+  ["Rule", "Exact definition", "Tuning"],
+  ["Explore until no frontiers", "Never stops early; runs until the episode ends", "None"],
+  ["Fixed budget", "Stop after B cycles (or earlier if the episode ends)", "B searched over 1…79; best on training maps: **B = 19**"],
+  ["Coverage threshold", "Stop at the first t where known_frac ≥ τ (fraction of **all** grid cells known)", "τ searched over 0.50…1.00 in steps of 0.02: **τ = 0.84**"],
+  ["Myopic rule", "Stop at the first t ≥ 1 where the previous cycle's value r(t−1) < 0", "None"],
+  ["Gain-vs-cost rule", "Stop at the first t where α × (potential ÷ expected cycle cost) < 1, i.e. potential < cost ÷ α", "α searched over 0.05…3.00 in steps of 0.05: **α = 1.6**"],
+  ["Learned value-aware stop", "Stop at the first t where Q(s_t) ≤ 0", "Trained by FQI on the cost-randomised runs"],
+  ["Oracle", "T* = argmax V(T), computed after the run", "Not a policy"],
+], [0.2, 0.5, 0.3]),
+P("**How the tuned rules were tuned:** for each candidate value, the rule's total net value over the 300 training maps (training cost setting: medium communication) was computed; the best value was kept. That is the best case for these rules in the training setting."),
+P("**A sensitivity check** (in `results/results.json`): if the baselines are instead tuned on the cost-randomised data (the same data the learned rule sees), the gain-vs-cost rule's average across the 36 settings improves (raw mean 44% → 65%), but its training-setting score drops slightly (89% → 88%), and the coverage threshold's training-setting score drops a lot (92% → 67%). There is no tuning choice that makes a single fixed threshold good everywhere; that is the point of the comparison."),
+
+H2("4.10 Data splits"),
+T([
+  ["Set", "Maps", "Setting", "Used for"],
+  ["Training", "300 (seeds 1000–1299)", "2 robots, 32×32", "Training the learned rule, tuning the baselines"],
+  ["Test (training setting)", "100 (seeds 50000–50099) + 40 from the grid below", "2 robots, 32×32, medium", "Slides 18–20 (140 maps pooled)"],
+  ["Generalisation grid", "40 per team-size × map-size combination (12 × 40 = 480 runs), each scored at 3 communication costs", "2/4/6/8 robots × 32/48/64 × low/medium/high = 36 settings", "Slides 21–23"],
+], [0.2, 0.33, 0.24, 0.23]),
+P("No test map is ever used for training or tuning. (The only exception is the deliberately optimistic \"re-tuned per setting\" control rows on slide 22, which are labelled as such.)"),
+
+H2("4.11 Compute and the live demo"),
+P("Everything runs on a laptop CPU. Generating all runs and evaluating everything takes about 15 minutes; with cached runs, `run_experiments.py` takes about 5. `demo.py` explores a brand-new random map live and prints, per cycle, the map mapped, new cells, cycle cost, net value so far, Q and the decision, then compares the learned stop with exploring to the end and with the best stop in hindsight. On fresh maps with 3 robots on 40×40 maps, the median score was 97% of the best stop, with 24 of 30 maps at 90% or more; about 1 map in 8 is below 70%. If you demo, say that before you start."),
+];

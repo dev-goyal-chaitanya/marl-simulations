@@ -1,0 +1,10 @@
+rule,pct_of_best_training_setting,mean_regret_pct_of_map,worst_regret_pct_of_map,settings_below_50pct,correlation_with_truth,sign_accuracy_pct
+coverage threshold (tuned baseline),92.11,4.73,25.26,5,,
+fqi + linear,94.65,3.52,13.05,4,0.77,89.28
+fqi + random forest,91.22,3.65,10.31,1,0.88,89.1
+fqi + extra trees,93.02,3.62,9.92,1,0.88,89.17
+fqi + neural net,92.25,4.82,12.08,1,0.87,89.02
+hindsight + linear,91.06,6.69,30.39,6,0.79,84.53
+hindsight + random forest,82.53,9.01,35.69,8,0.87,79.88
+hindsight + extra trees,79.58,9.65,38.98,8,0.87,79.02
+hindsight + neural net,86.42,5.41,37.36,5,0.87,79.35

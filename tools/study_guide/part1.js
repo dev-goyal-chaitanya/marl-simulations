@@ -1,0 +1,56 @@
+const { H1, H1nb, H2, H3, P, B, N, EQ, NOTE, WARN, SAY, DONT, SP, T, IMG } = require("./lib");
+
+module.exports = [
+// ------------------------------------------------------------------ front matter
+H1nb("How to use this document"),
+P("This document explains everything in the revised deck (*Value_Aware_Stopping_Proposal_v2.pptx*, 32 slides): every term, every formula, every number, where each number comes from, what it does and does not prove, and the questions your professor is likely to ask. It is written so that you can present the project without memorising anything you do not understand."),
+P("Read it in this order:"),
+N("**Part 1** (the story and the corrections) — 10 minutes. Read this first, even if you read nothing else.", "num1"),
+N("**Part 2** (background concepts) — every technical word used in the deck, explained from zero.", "num1"),
+N("**Parts 3–4** (formulation and prototype) — exactly what the problem is and exactly what the code does.", "num1"),
+N("**Parts 5–6** (metrics and results) — how methods are judged, and every result with its honest interpretation.", "num1"),
+N("**Part 7** (slide by slide) — for each slide: what it shows, what to say, and what not to say.", "num1"),
+N("**Part 8** (cross-questions) — about 45 likely questions with answers.", "num1"),
+N("**Part 9** (reading list) — verified papers, what each one does, what to read first.", "num1"),
+N("**Part 10** (numbers cheat sheet and full results table).", "num1"),
+NOTE([
+  "Every number in the deck and in this document was recomputed from the saved experiment runs in the prototype folder (`results/`). The scripts `extra_metrics.py` to `extra_metrics4.py` in the prototype reproduce them; `results/extra_metrics.json` stores them.",
+  "Every paper cited was checked against its publisher page, DOI or arXiv entry. One very recent preprint that appeared in searches (ICMAPE, \"In-Context Multiagent Pure Exploration\", arXiv 2609.33986, posted around 29 September 2026) could not be opened because the site rate-limited the request. Read its abstract before the presentation in case it overlaps.",
+], "Where the numbers and citations come from"),
+
+// ------------------------------------------------------------------ PART 1
+H1("Part 1. The story in one page, and what changed"),
+H2("1.1 The project in plain words"),
+P("A team of robots is sent into a building nobody has mapped. They move around, see what is near them, share what they see, and build a map together. Every cycle of this costs something: the robots drive (energy, time), they send map updates to each other (bandwidth), and the team has to re-plan who goes where (computation, coordination)."),
+P("At the start, every cycle reveals whole rooms. Near the end, the unexplored space is small corners and pockets spread across the building; reaching them needs long drives for little new map. At some point one more cycle costs more than it is worth. **The project asks: can the team learn to recognise that point and stop there?**"),
+P("Today, exploration systems stop with a fixed rule: when nothing unknown is reachable, when some percentage of the area is mapped, or when a time budget runs out. These rules do not look at what the rest of the map is likely to be worth compared with what it will cost, and the thresholds have to be re-tuned whenever the team, the building or the cost of communication changes."),
+P("The proposal treats this as an **optimal stopping** problem (a classical branch of probability: when should you stop a process to get the best expected result?) and wants to learn the stopping decision with **hierarchical multi-agent reinforcement learning**: a team-level policy that decides stop/continue once per cycle (Level 1) on top of per-robot policies that decide where each robot goes (Level 2)."),
+H2("1.2 What the week-1 prototype shows, honestly"),
+B("In the training setting (2 robots, 32×32 maps), the learned stop scores **91%** of the best possible net value, against **92%** for the best hand-tuned rule. The 95% confidence intervals overlap: **it is a tie, not a win**."),
+B("Its estimate of \"how much value is left\" tracks the true value (correlation **r = 0.88**; right sign — continue vs stop — at **89%** of decision points)."),
+B("Tested without retraining on 36 new settings (2–8 robots, 32–64 cell maps, three communication costs), it is **as good as the best tuned rule in a typical setting** (interquartile mean 89% vs 89%), but **much safer in the worst case**: it never loses more than 9.9% of the map's worth of value, while the tuned coverage rule loses up to 25.3%, and the tuned rules collapse badly (large negative scores) when teams are big and messages are expensive."),
+B("A simple rule that is **re-tuned separately for every new setting** (using that setting's own test maps) does about as well as the learned rule. So the learned rule's value is that it gets there **without needing data and tuning for every new deployment**."),
+B("It has one clear failure: with **2 robots on bigger maps (48×48, 64×64)** it stops **20–33 cycles too early** and scores about 75% against about 92% for the coverage rule."),
+B("It is **not yet multi-agent RL**: robot movement (Level 2) is a fixed greedy rule and the stop (Level 1) is learned by one central learner. Making it genuinely MARL is the semester's work."),
+H2("1.3 Corrections to what I told you earlier"),
+P("While re-checking every number for this document I found four things that were wrong or misleading in the old deck or in my earlier explanations. The new deck fixes all of them. **Do not use the old slide 9.**"),
+T([
+  ["What was said before", "What is correct", "Why it matters"],
+  ["\"83% vs ≤52%: mean across 36 unseen settings\" (old slide 9)", "Averaging percentages across settings is misleading here. In the hardest settings the best achievable value is tiny (≈27 cells on average for 8 robots, 32×32, high communication; on 14 of 40 maps there it is not worth exploring at all). Dividing by a tiny number turns small losses into −732% or −1411%, which drags the average down. With a robust average (interquartile mean) learned and coverage both score **89%**.", "A professor who knows statistics can break the \"83 vs 52\" claim in one question. The robust version (same typical score, much better worst case) cannot be broken."],
+  ["\"93% vs 92%\" on the training setting", "93% was on the 100-map test set. A second, independent set of 40 maps from the same setting gave 87% vs 93% (coverage better). Pooled over all 140 maps: **91% [89–93] vs 92% [91–94]**, difference not significant.", "\"Tie\" is correct; \"slightly better\" is not."],
+  ["\"One-step look-ahead\" baseline", "The rule stops after the first cycle whose value was negative. It looks **back** at the last cycle, not ahead. The new deck calls it the **myopic rule: stop after a losing cycle**.", "If asked \"how does your look-ahead predict the next cycle?\" the old name has no answer."],
+  ["Info-gain rule: \"stop when expected new cells < 1.6 × cycle cost\"", "The rule stops when α × (expected gain ÷ cycle cost) < 1 with α = 1.6, i.e. when **expected gain < cycle cost ÷ 1.6 ≈ 0.63 × cost**.", "Getting a baseline's definition wrong in front of the professor looks careless."],
+], [0.25, 0.47, 0.28]),
+SP(),
+WARN([
+  "The honest headline is weaker than the old one: **\"matches the best tuned rule in typical conditions, avoids its catastrophic failures when costs change, needs no re-tuning; fails on much larger maps with small teams; not yet MARL.\"**",
+  "That is fine for a proposal. A proposal is judged on whether the question is real, the method is sound, and the evaluation is honest. A first prototype that ties strong baselines and shows exactly where the idea helps and where it fails is good evidence. An inflated claim that collapses under one question is not.",
+], "The headline you should use"),
+H2("1.4 Is this incremental research? Yes — and that is normal"),
+P("Almost all research is incremental: it takes known pieces and combines or extends them to answer a question nobody answered before. Here the known pieces are frontier-based exploration (1997), optimal stopping theory (1970s), batch reinforcement learning (fitted Q-iteration, 2005) and cooperative MARL with centralised training (2017–2022). The new part is the **question** (a learned, team-level, cost-aware decision to end a multi-robot exploration mission), its **formulation** (optimal stopping inside a Dec-POMDP with motion, communication and coordination costs), and the **evaluation protocol** (train small, test on unseen team sizes, map sizes and costs, against tuned rules and a hindsight oracle)."),
+P("For incremental work, the question \"is my way better than the others?\" is answered by four things, all covered in Part 5:"),
+N("**A fair comparison**: the same maps, the same robot behaviour, the same data for tuning or training, and baselines tuned to their best case.", "num2"),
+N("**Metrics that match the goal**: net value relative to the best achievable stop (the goal itself), plus regret, timing error, operational cost and robustness.", "num2"),
+N("**Statistics**: confidence intervals, paired comparisons, several training seeds, all settings reported (not just the good ones).", "num2"),
+N("**Ablations**: remove one component at a time to show where the improvement comes from (the ablation table on slide 26).", "num2"),
+];
