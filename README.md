@@ -11,7 +11,7 @@ Study Oriented Project, Dept. of CSIS, BITS Pilani. Chaitanya Goyal, supervised 
 | Folder | What it holds |
 |---|---|
 | `code/` | Simulator, cost model, learned stop rule, all experiments and plots |
-| `docs/proposal/` | Current proposal deck (pptx + pdf), with references |
+| `docs/proposal/` | Current progress-review deck (pptx + pdf), with references |
 | `docs/WEEK1_2_RESULTS.md` | Latest results: is the problem real, and is RL needed |
 | `docs/Study_Guide_Value_Aware_Stopping.docx` | Explains every slide, formula and metric |
 | `docs/literature/` | Paper database and paper comparison sheet |
